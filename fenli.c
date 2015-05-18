@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <setjmp.h>
 #include <string.h>
+#include "tool.h"
 
 jmp_buf err;
 
@@ -16,7 +17,8 @@ char *catch_class(char *b,struct CLASS *cls)
     int flag=0;
     char class_name[128];
     char *name_ptr=class_name;
-    char *a=b,*c;
+    int size;
+    char *a=b,*c,*d,*e;
     char *def=cls->def;
     char *dec=cls->dec;
     if(strncmp(b,"class",5)!=0)
@@ -25,44 +27,36 @@ char *catch_class(char *b,struct CLASS *cls)
     while(isspace(*b))  b++;//find the start of the class name
     while(!isspace(*b) && *b!='{') *name_ptr++=*b++;//save the class name
     *name_ptr=0;//save the finish position
-    while(*b!='{')
-    {
-        if(*b==';') {
-            char *dec=cls->dec;
-            while(a!=b) *dec++=*a++;
-            *dec++=';';
-            return ++b;
-        }
-        b++;
-    }
-    char *d=++b;//find start of class body and save
-    while(a!=b) *dec++=*a++;//save above this to dec
+    a=b;
+    size=name_ptr-class_name;
+
+
     while(1)
     {
-        c=b;
         while(*b!='{')
         {
-            if(*b=='}')
-            {
+            if(*b==';') {
                 b++;
-                while(c!=b) *dec++=*c++;
+                dec=copystr(a,b,dec);
                 cls->dec=dec;
                 cls->def=def;
                 return b;
             }
             b++;
         }
+        int n=find_match('{','}',1,b,&c,&d);
+        if(n==2) longjmp(err,7);
+        else if(n==1) longjmp(err,8);
+
+        b=c;
         while(isspace(*--b));//pass space
-        c=b+1;//find start of define and save
         if(*b==')')
         {
-            char *e;
-            while(*b--!='(');//find the (of the function
+            find_match(')','(',0,b,0,&b);
             while(isspace(*b)) b--;//find the name of the function
             e=b;
             while(*b!='*' && !isspace(*b)) b--;//find start of the name
             b++;
-            int size=name_ptr-class_name;
             if(*(b)=='`')
                 if( e-b!=size || strncmp(b-1,class_name,size))
                     flag=1;
@@ -72,39 +66,25 @@ char *catch_class(char *b,struct CLASS *cls)
                 flag=1;//whether function have return
             else
                 flag=0;
+            e=b;
             if(flag)
             {
-                e=b;
                 b--;
                 while(*b=='*' || isspace(*b)) b--;//find the return type of the name
                 while(!isspace(*--b)) ;//find the start of the function
                 b++;
             }
-            //find the finish of the function
-            while(d!=c)  *dec++=*d++;//save the above this to dec
+            dec=copystr(a,c,dec);
             *dec++=';';
-            int n=-1;
-            while(n!=0 || *c!='}')
-            {
-                if(*c=='{') n++;
-                if(*c=='}') n--;
-                c++;
-                if(*c==0)
-                {
-                    longjmp(err,2);
-                }
+            if(flag){
+                def=copystr(b,e,def);
             }
-            if(flag)
-                while(b!=e) *def++=*b++;//write the return type to the def
-            char *start_name=class_name;
-            while(start_name!=name_ptr) *def++=*start_name++;//write the class name
+            def=copystr(class_name,name_ptr,def);
             *def++=':';
-            *def++=':';//write ::
-            c++;
-            while(b!=c) *def++=*b++;//write function body
+            *def++=':';
+            def=copystr(e,d,def);
             *def++='\n';
-            b=c;
-            d=b;
+            a=d;
         }
         else longjmp(err,3);
     }
@@ -112,74 +92,46 @@ char *catch_class(char *b,struct CLASS *cls)
 
 void analys(char *a,struct CLASS *cls)
 {
-    char *b;
+    char *b,*c,*d;
     char *end=(char *)1;
     while(1)
     {
-        b=a;
-        if(end!=0) end=strstr(b,"class");
-        while(*b!='{')
-        {
-            if(*b==0)
-            {
-                char *dec=cls->dec;
-                while(a!=b) *dec++=*a++;
-                cls->dec=dec;
-                return;
-            }
-            b++;
+        if(end!=0) end=strstr(a,"class");
+        int n=find_match('{','}',1,a,&c,&d);
+        if(n==2) longjmp(err,5);
+        else if(n==1) {
+            cls->dec=copystr(a,c,cls->dec);
+            return ;
         }
         if(end!=0 && b>end)
         {
-            char *dec=cls->dec;
-            while(a!=end) *dec++=*a++;
-            cls->dec=dec;
+            cls->dec=copystr(a,end,cls->dec);
             a=catch_class(end,cls);
         }
         else
         {
-            char *d=b;
+            b=c;
+            d++;
             while(isspace(*--b));
             if(*b==')')
             {
-                char *c=b+1;
-                while(*--b=='(');
+                int n=find_match(')','(',0,b,0,&b);
+                if(n) longjmp(err,6);
                 while(isspace(*--b));
                 while(!isspace(*b) && *b!='*') b--;
                 while(isspace(*b) || *b=='*') b--;
                 while(!isspace(*b))b--;
                 b++;
-                char *dec=cls->dec;
-                char *def=cls->def;
-                int n=-1;
-                while(n==0 && *d=='}')
-                {
-                    if(*d=='}') n--;
-                    if(*d=='{') n++;
-                    d++;
-                    if(*d==0) longjmp(err,4);
-                }
-                d++;
-                while(a!=c) *dec++=*a++;
-                while(b!=d) *def++=*b++;
-                *def++='\n';
-                cls->dec=dec;
-                cls->def=def;
+                cls->dec=copystr(a,c,cls->dec);
+                cls->def=copystr(b,d,cls->def);
+                *(cls->dec)++=';';
+                *(cls->def)++='\n';
                 a=d;
             }
             else
             {
-                int n=-1;
-                while(n==0 && *d=='}')
-                {
-                    if(*d=='}') n--;
-                    if(*d=='{') n++;
-                    d++;
-                    if(*d==0) longjmp(err,4);
-                }
-                d++;
-                char *dec=cls->dec;
-                while(a!=d) *dec++=*a++;
+                cls->dec=copystr(a,d,cls->dec);
+                a=d;
             }
         }
     }
@@ -189,6 +141,7 @@ void fenli(FILE *source,FILE *f_dec,FILE *f_def)
 {
     fseek(source,0,2);
     int size=ftell(source);
+    if(size==0) return ;
     struct CLASS a;
     a.dec=(char *)malloc(size);
     a.def=(char *)malloc(size);
@@ -216,6 +169,8 @@ void fenli(FILE *source,FILE *f_dec,FILE *f_def)
     analys(sources,&a);
     fwrite(ci.dec,1,a.dec-ci.dec,f_dec);
     fwrite(ci.def,1,a.def-ci.def,f_def);
+    free(ci.dec);
+    free(ci.def);
     fflush(f_dec);
     fflush(f_def);
 };
@@ -223,9 +178,28 @@ void fenli(FILE *source,FILE *f_dec,FILE *f_def)
 int main(int args,char *argv[])
 {
     FILE *a,*b,*c;
-    a=fopen(argv[1],"r");
-    b=fopen(argv[2],"w");
-    c=fopen(argv[3],"w");
+    a=fopen("asd.c","r");
+    b=fopen("dec.c","w");
+    c=fopen("def.c","w");
+    if(!a)
+    {
+	printf("wrong 1");
+	return 0;
+    }
+    if(!b)
+    {
+	printf("wrong 2");
+	return 0;
+    }
+    if(!c)
+    {
+	printf("wrong 3");
+	return 0;
+    }
+    int n;
+    if(n=setjmp(err)){
+        printf("err:%d\n",n);
+    }
     fenli(a,b,c);
     return 0;
 }
