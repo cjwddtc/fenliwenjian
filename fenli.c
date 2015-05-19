@@ -25,17 +25,41 @@ char *catch_class(char *b,struct CLASS *cls)
         longjmp(err,1);
     b+=5;
     while(isspace(*b))  b++;//find the start of the class name
-    while(!isspace(*b) && *b!='{') *name_ptr++=*b++;//save the class name
+    while(!isspace(*b) && *b!='{')
+    {
+        if(*b==';')
+        {
+            b++;
+            dec=copystr(a,b,dec);
+            cls->dec=dec;
+            cls->def=def;
+            return b;
+        }
+        *name_ptr++=*b++;//save the class name
+    }
+    while(isspace(*b)) b++;
+    if(*b==';')
+    {
+        b++;
+        dec=copystr(a,b,dec);
+        cls->dec=dec;
+        cls->def=def;
+        return b;
+    }
+    else if(*b=='{') b++;
+    else longjmp(err,8);
+    dec=copystr(a,b,dec);
     *name_ptr=0;//save the finish position
     a=b;
     size=name_ptr-class_name;
 
-
     while(1)
     {
+        b=a;
         while(*b!='{')
         {
-            if(*b==';') {
+            if(*b=='}')
+            {
                 b++;
                 dec=copystr(a,b,dec);
                 cls->dec=dec;
@@ -45,11 +69,12 @@ char *catch_class(char *b,struct CLASS *cls)
             b++;
         }
         int n=find_match('{','}',1,b,&c,&d);
+        d++;
         if(n==2) longjmp(err,7);
         else if(n==1) longjmp(err,8);
 
+        while(isspace(*--c));//pass space
         b=c;
-        while(isspace(*--b));//pass space
         if(*b==')')
         {
             find_match(')','(',0,b,0,&b);
@@ -58,11 +83,11 @@ char *catch_class(char *b,struct CLASS *cls)
             while(*b!='*' && !isspace(*b)) b--;//find start of the name
             b++;
             if(*(b)=='`')
-                if( e-b!=size || strncmp(b-1,class_name,size))
+                if( e-b-1!=size || strncmp(b-1,class_name,size))
                     flag=1;
                 else
                     flag=0;
-            else if(e-b+1!=size || strncmp(b,class_name,size))
+            else if(e-b!=size || strncmp(b,class_name,size))
                 flag=1;//whether function have return
             else
                 flag=0;
@@ -76,7 +101,8 @@ char *catch_class(char *b,struct CLASS *cls)
             }
             dec=copystr(a,c,dec);
             *dec++=';';
-            if(flag){
+            if(flag)
+            {
                 def=copystr(b,e,def);
             }
             def=copystr(class_name,name_ptr,def);
@@ -99,11 +125,12 @@ void analys(char *a,struct CLASS *cls)
         if(end!=0) end=strstr(a,"class");
         int n=find_match('{','}',1,a,&c,&d);
         if(n==2) longjmp(err,5);
-        else if(n==1) {
+        else if(n==1)
+        {
             cls->dec=copystr(a,c,cls->dec);
             return ;
         }
-        if(end!=0 && b>end)
+        if(end!=0 && c>end)
         {
             cls->dec=copystr(a,end,cls->dec);
             a=catch_class(end,cls);
@@ -183,22 +210,24 @@ int main(int args,char *argv[])
     c=fopen("def.c","w");
     if(!a)
     {
-	printf("wrong 1");
-	return 0;
+        printf("wrong 1");
+        return 0;
     }
     if(!b)
     {
-	printf("wrong 2");
-	return 0;
+        printf("wrong 2");
+        return 0;
     }
     if(!c)
     {
-	printf("wrong 3");
-	return 0;
+        printf("wrong 3");
+        return 0;
     }
     int n;
-    if(n=setjmp(err)){
+    if(n=setjmp(err))
+    {
         printf("err:%d\n",n);
+        getchar();
     }
     fenli(a,b,c);
     return 0;
